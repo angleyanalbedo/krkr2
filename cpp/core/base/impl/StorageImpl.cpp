@@ -35,6 +35,9 @@
 #include "combase.h"
 
 #include "spdlog/spdlog.h"
+#if defined(_MSC_VER) && (_MSC_VER >= 1200)
+#include <io.h>
+#endif
 
 // 和系统宏冲突了
 #ifdef _WIN32
@@ -42,6 +45,8 @@
 #endif
 
 #if defined(__APPLE__) || defined(__MACH__) || defined(__FreeBSD__)
+#define lseek64 lseek
+#else
 #define lseek64 lseek
 #endif
 
