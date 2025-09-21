@@ -843,47 +843,86 @@ TVPListForm::create(const std::vector<cocos2d::ui::Widget *> &cells) {
     return ret;
 }
 
-void TVPListForm::initFromInfo(
-    const std::vector<cocos2d::ui::Widget *> &cells) {
+void TVPListForm::initFromInfo(const std::vector<cocos2d::ui::Widget *> &cells) {
     init();
     float scale = TVPMainScene::GetInstance()->getUIScale();
-    cocos2d::Size sceneSize =
-        TVPMainScene::GetInstance()->getUINodeSize() / scale;
+    cocos2d::Size sceneSize = TVPMainScene::GetInstance()->getUINodeSize() / scale;
     setScale(scale);
     setContentSize(sceneSize);
+    
     CSBReader reader;
     _root = reader.Load("ui/ListView.csb");
-    ListView *listview =
-        dynamic_cast<ListView *>(reader.findController("list"));
-    float height = 10;
-    for(Widget *cell : cells) {
-        height += cell->getContentSize().height;
+    ListView *listview = dynamic_cast<ListView *>(reader.findController("list"));
+    
+    if (!listview) {
+        spdlog::error("ListView not found in CSB!");
+        return;
     }
+
+    // 先设置ListView的尺寸和属性
+    listview->setContentSize(sceneSize * 0.8f);
+    listview->setDirection(ui::ScrollView::Direction::VERTICAL);
+    listview->setGravity(ui::ListView::Gravity::CENTER_HORIZONTAL);
+    listview->setItemsMargin(10.0f); // 设置项目间距
+
     _root->setAnchorPoint(Size(0.5, 0.5));
     _root->setPosition(sceneSize / 2);
-    sceneSize.width *= 0.8f;
-    sceneSize.height *= 0.8f;
-    if(height < sceneSize.height * scale) {
-        sceneSize.height = height;
-    }
-    _root->setContentSize(sceneSize);
-    ui::Helper::doLayout(_root);
-    float width = listview->getContentSize().width;
+    addChild(_root);
+
+    // 预处理所有单元格
+    float totalHeight = 0;
     for(Widget *cell : cells) {
-        cocos2d::Size size = cell->getContentSize();
-        size.width = width;
-        cell->setContentSize(size);
-        ui::Helper::doLayout(cell);
-        listview->pushBackCustomItem(cell);
+        if (!cell) {
+            spdlog::warn("Null cell found in cells vector!");
+            continue;
+        }
+        
+        // 确保单元格有合适的尺寸
+        cocos2d::Size cellSize = cell->getContentSize();
+        if (cellSize.width <= 0 || cellSize.height <= 0) {
+            cellSize = Size(sceneSize.width * 0.75f, 60); // 默认尺寸
+            cell->setContentSize(cellSize);
+        }
+        totalHeight += cellSize.height + listview->getItemsMargin();
+        
+        // 先移除可能的父节点
+        if (cell->getParent()) {
+           cell->removeFromParent();
+        }
     }
-    if(listview->getItems().back()->getBottomBoundary() < 0) {
+
+    // 逐个添加单元格
+    for(Widget *cell : cells) {
+        if (!cell) continue;
+        
+        // 确保单元格宽度匹配ListView
+        cocos2d::Size cellSize = cell->getContentSize();
+        cellSize.width = listview->getContentSize().width;
+        cell->setContentSize(cellSize);
+        
+        // 先添加到临时节点进行布局，然后再添加到ListView
+        Layout* tempLayout = Layout::create();
+        tempLayout->setContentSize(cellSize);
+        tempLayout->addChild(cell);
+        cell->setPosition(cellSize / 2);
+        ui::Helper::doLayout(tempLayout);
+        
+        // 添加到ListView
+        listview->pushBackCustomItem(tempLayout);
+    }
+
+    // 强制刷新布局
+    listview->forceDoLayout();
+
+    // 根据内容调整滚动设置
+    if (totalHeight > listview->getContentSize().height) {
+        listview->setBounceEnabled(true);
         listview->setClippingEnabled(true);
     } else {
         listview->setBounceEnabled(false);
+        listview->setClippingEnabled(false);
     }
-    addChild(_root);
 }
-
 void TVPListForm::show() {
     TVPMainScene::setMaskLayTouchBegain(
         [this](cocos2d::Touch *t, cocos2d::Event *e) {
